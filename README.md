@@ -1,13 +1,13 @@
 # go-k8s-data-pipeline
 Building high performance data pipeline with Go and k8s
 
-# Building Scalable Data Pipelines: Using Go, Kafka, and Kubernetes
+# Building Scalable Data Pipelines: Using Go, Kafka (KRaft Mode), and Kubernetes
 
 ### Introduction
 
-In today’s data-driven world, businesses generate massive amounts of data every second. Processing, transforming, and managing this data efficiently requires **scalable data pipelines**. If you're an absolute beginner and wondering how to build such a pipeline using **Go, Kafka, MongoDB, and Kubernetes**, this guide is for you!
+In today’s data-driven world, businesses generate massive amounts of data every second. Processing, transforming, and managing this data efficiently requires **scalable data pipelines**. If you're an absolute beginner and wondering how to build such a pipeline using **Go, Kafka (in KRaft mode), MongoDB, and Kubernetes**, this guide is for you!
 
-We’ll walk through the **fundamentals of data pipelines**, the **role of Go, Kafka, and Kubernetes**, and how to build a **simple, scalable data pipeline** step by step.
+We’ll walk through the **fundamentals of data pipelines**, the **role of Go, Kafka (KRaft), and Kubernetes**, and how to build a **simple, scalable data pipeline** step by step.
 
 ---
 
@@ -20,7 +20,7 @@ A **data pipeline** is a set of processes that ingest, process, transform, and s
 3. **Storage** – Saving processed data in databases or cloud storage.
 4. **Serving & Visualization** – Making data available for analytics, dashboards, or other applications.
 
-Modern data pipelines should be **scalable, resilient, and fault-tolerant**—which is where **Go, Kafka, MongoDB, and Kubernetes** come into play.
+Modern data pipelines should be **scalable, resilient, and fault-tolerant**—which is where **Go, Kafka (KRaft mode), MongoDB, and Kubernetes** come into play.
 
 ---
 
@@ -67,7 +67,7 @@ import (
 )
 
 func main() {
-    p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "kafka-service:9092"})
+    p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "kafka.default.svc.cluster.local:9092"})
     if err != nil {
         log.Fatalf("Failed to create producer: %s", err)
     }
@@ -75,7 +75,7 @@ func main() {
 
     topic := "dummy-data"
     for {
-        message := fmt.Sprintf("{"timestamp": "%s", "value": %d}", time.Now().Format(time.RFC3339), time.Now().UnixNano())
+        message := fmt.Sprintf("{\"timestamp\": \"%s\", \"value\": %d}", time.Now().Format(time.RFC3339), time.Now().UnixNano())
         err := p.Produce(&kafka.Message{TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny}, Value: []byte(message)}, nil)
         if err != nil {
             log.Printf("Failed to produce message: %s", err)
@@ -89,47 +89,24 @@ Build and deploy this **Kafka producer** in a Kubernetes **Deployment**.
 
 ---
 
-## Step 4: Deploying a Kafka Cluster on Kubernetes
+## Step 4: Deploying a Kafka Cluster in KRaft Mode on Kubernetes
 
-We'll use **Strimzi**, an open-source Kubernetes operator for running Apache Kafka.
+We’ll use **Bitnami’s Kafka Helm chart** to deploy a Zookeeper-free Kafka cluster using **KRaft mode**.
 
-### 1. Deploy Kafka Operator
-
-```sh
-kubectl create namespace kafka
-kubectl apply -f https://strimzi.io/install/latest?namespace=kafka
-```
-
-### 2. Deploy Kafka Cluster
-
-Create a `kafka.yaml` manifest:
-
-```yaml
-apiVersion: kafka.strimzi.io/v1beta2
-kind: Kafka
-metadata:
-  name: kafka-cluster
-  namespace: kafka
-spec:
-  kafka:
-    replicas: 3
-    listeners:
-      - name: plain
-        port: 9092
-        type: internal
-    storage:
-      type: ephemeral
-  zookeeper:
-    replicas: 3
-    storage:
-      type: ephemeral
-```
-
-Apply the configuration:
+### 1. Add Bitnami Helm Repository
 
 ```sh
-kubectl apply -f kafka.yaml -n kafka
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
 ```
+
+### 2. Install Kafka in KRaft Mode
+
+```sh
+helm install kafka bitnami/kafka --set kraft.enabled=true
+```
+
+This sets up a fully functional Kafka cluster without Zookeeper.
 
 ---
 
@@ -157,7 +134,7 @@ import (
 )
 
 func main() {
-    consumer, _ := kafka.NewConsumer(&kafka.ConfigMap{"bootstrap.servers": "kafka-service:9092", "group.id": "etl-group", "auto.offset.reset": "earliest"})
+    consumer, _ := kafka.NewConsumer(&kafka.ConfigMap{"bootstrap.servers": "kafka.default.svc.cluster.local:9092", "group.id": "etl-group", "auto.offset.reset": "earliest"})
     consumer.Subscribe("dummy-data", nil)
 
     client, _ := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://mongo-service:27017"))
@@ -238,7 +215,7 @@ Monitor Kafka consumer lag and MongoDB performance using **Prometheus & Grafana*
 
 ## Conclusion
 
-- ✅ **Fully automated Kafka-based data pipeline** in Go & Kubernetes.
+- ✅ **Fully automated Kafka-based data pipeline** in Go & Kubernetes (Zookeeper-free).
 - ✅ **Auto-scaled ETL logic** ensures efficient performance.
 - ✅ **Step-by-step deployment & benchmarking** for real-world readiness.
 
