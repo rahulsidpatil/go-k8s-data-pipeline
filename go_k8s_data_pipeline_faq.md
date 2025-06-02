@@ -29,4 +29,4 @@ A dummy data generator in Go simulates event streams that mimic real-world senso
 Kubernetes Horizontal Pod Autoscaler (HPA) is used based on CPU/memory usage or custom metrics from Prometheus.
 
 ### 10. Where can I access the source code and setup instructions?
-GitHub Repo: [https://github.com/golangda/go-k8s-data-pipeline](https://github.com/golangda/go-k8s-data-pipeline)
+GitHub Repo: [https://github.com/rahulsidpatil/go-k8s-data-pipeline](https://github.com/rahulsidpatil/go-k8s-data-pipeline)
