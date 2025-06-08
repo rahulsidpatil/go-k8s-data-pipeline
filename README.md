@@ -29,23 +29,55 @@ Modern data pipelines should be **scalable, resilient, and fault-tolerant**—wh
 For this demo, we'll use **Minikube**, a local Kubernetes cluster.
 
 ### 1. Install Minikube
+> Check out minikube installation guides for all platforms at: [minikube installation guides](https://minikube.sigs.k8s.io/docs/start/?arch=%2Fwindows%2Fx86-64%2Fstable%2F.exe+download)
 
 ```sh
-# Install Minikube (MacOS/Linux)
+# Install Minikube (WSL Ubuntu 22.04)
 curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
 sudo install minikube-linux-amd64 /usr/local/bin/minikube
+```
+Verify installation:
+
+```sh
+minikube version
+```
+sample output
+```sh
+minikube version: v1.36.0
 ```
 
 ### 2. Start Minikube Cluster
 
 ```sh
-minikube start --memory=8192 --cpus=4
+minikube start --cpus=4 --memory=8192 --kubernetes-version=v1.33.1
 ```
+
+sample output
+```sh
+😄  minikube v1.36.0 on Ubuntu 22.04 (amd64)
+✨  Using the docker driver based on existing profile
+👍  Starting "minikube" primary control-plane node in "minikube" cluster
+🚜  Pulling base image v0.0.47 ...
+🔄  Restarting existing docker container for "minikube" ...
+🐳  Preparing Kubernetes v1.33.1 on Docker 28.1.1 ...
+🔎  Verifying Kubernetes components...
+    ▪ Using image gcr.io/k8s-minikube/storage-provisioner:v5
+🌟  Enabled addons: storage-provisioner, default-storageclass
+🏄  Done! kubectl is now configured to use "minikube" cluster and "default" namespace by default
+```
+
 
 Verify installation:
 
 ```sh
 kubectl get nodes
+```
+
+sample output:
+```sh
+
+NAME       STATUS   ROLES           AGE     VERSION
+minikube   Ready    control-plane   9m42s   v1.33.1
 ```
 
 ---
@@ -91,6 +123,15 @@ Build and deploy this **Kafka producer** in a Kubernetes **Deployment**.
 
 ## Step 4: Deploying a Kafka Cluster in KRaft Mode on Kubernetes
 
+### Create a Namespace for Kafka
+```sh
+kubectl create namespace kafka
+```
+sample output
+```sh
+namespace/kafka created
+```
+
 We’ll use **Bitnami’s Kafka Helm chart** to deploy a Zookeeper-free Kafka cluster using **KRaft mode**.
 
 ### 1. Add Bitnami Helm Repository
@@ -101,12 +142,149 @@ helm repo update
 ```
 
 ### 2. Install Kafka in KRaft Mode
+- We shall install Bitnami Kafka Helm Chart with KRaft Mode (Bitnami supports Kafka KRaft mode via Helm).
 
 ```sh
-helm install kafka bitnami/kafka --set kraft.enabled=true
+ helm repo add bitnami https://charts.bitnami.com/bitnami
 ```
 
-This sets up a fully functional Kafka cluster without Zookeeper.
+sample output:
+```sh
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/rahulspa/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/rahulspa/.kube/config
+"bitnami" has been added to your repositories
+```
+
+```sh
+helm repo update
+```
+sample output:
+```sh
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/rahulspa/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/rahulspa/.kube/config
+Hang tight while we grab the latest from your chart repositories...
+...Successfully got an update from the "bitnami" chart repository
+Update Complete. ⎈Happy Helming!⎈
+```
+- Create a `k8s/kraft-values.yaml` file for KRaft mode
+
+```yaml
+
+# kraft-values.yaml
+controller:
+  replicaCount: 3
+
+kafka:
+  kraft:
+    enabled: true
+    clusterId: "my-cluster-id"  # Must be fixed across upgrades
+  replicas: 3
+  listeners:
+    client:
+      protocol: PLAINTEXT
+  configurationOverrides:
+    "log.retention.hours": 168
+    "log.segment.bytes": 1073741824
+    "log.retention.check.interval.ms": 300000
+
+```
+- Install kafka cluster
+
+```sh
+helm install kafka bitnami/kafka -n kafka -f k8s/kraft-values.yaml
+```
+sample output:
+```sh
+
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/rahulspa/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/rahulspa/.kube/config
+NAME: kafka
+LAST DEPLOYED: Wed Jun  4 12:22:58 2025
+NAMESPACE: kafka
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+CHART NAME: kafka
+CHART VERSION: 32.2.12
+APP VERSION: 4.0.0
+
+Did you know there are enterprise versions of the Bitnami catalog? For enhanced secure software supply chain features, unlimited pulls from Docker, LTS support, or application customization, see Bitnami Premium or Tanzu Application Catalog. See https://www.arrow.com/globalecs/na/vendors/bitnami for more information.
+
+** Please be patient while the chart is being deployed **
+
+Kafka can be accessed by consumers via port 9092 on the following DNS name from within your cluster:
+
+    kafka.kafka.svc.cluster.local
+
+Each Kafka broker can be accessed by producers via port 9092 on the following DNS name(s) from within your cluster:
+
+    kafka-controller-0.kafka-controller-headless.kafka.svc.cluster.local:9092
+    kafka-controller-1.kafka-controller-headless.kafka.svc.cluster.local:9092
+    kafka-controller-2.kafka-controller-headless.kafka.svc.cluster.local:9092
+
+The CLIENT listener for Kafka client connections from within your cluster have been configured with the following security settings:
+    - SASL authentication
+
+To connect a client to your Kafka, you need to create the 'client.properties' configuration files with the content below:
+
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=SCRAM-SHA-256
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
+    username="user1" \
+    password="$(kubectl get secret kafka-user-passwords --namespace kafka -o jsonpath='{.data.client-passwords}' | base64 -d | cut -d , -f 1)";
+
+To create a pod that you can use as a Kafka client run the following commands:
+
+    kubectl run kafka-client --restart='Never' --image docker.io/bitnami/kafka:4.0.0-debian-12-r7 --namespace kafka --command -- sleep infinity
+    kubectl cp --namespace kafka /path/to/client.properties kafka-client:/tmp/client.properties
+    kubectl exec --tty -i kafka-client --namespace kafka -- bash
+
+    PRODUCER:
+        kafka-console-producer.sh \
+            --producer.config /tmp/client.properties \
+            --bootstrap-server kafka.kafka.svc.cluster.local:9092 \
+            --topic test
+
+    CONSUMER:
+        kafka-console-consumer.sh \
+            --consumer.config /tmp/client.properties \
+            --bootstrap-server kafka.kafka.svc.cluster.local:9092 \
+            --topic test \
+            --from-beginning
+
+WARNING: There are "resources" sections in the chart not set. Using "resourcesPreset" is not recommended for production. For production installations, please set the following values according to your workload needs:
+  - controller.resources
+  - defaultInitContainers.prepareConfig.resources
++info https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+```
+This will deploy:
+- 3 Kafka brokers with KRaft controller enabled
+- No need for Zookeeper
+
+- Verify Pods and Services
+```sh
+kubectl get pods -n kafka
+```
+sample output:
+```sh
+NAME                 READY   STATUS    RESTARTS   AGE
+kafka-controller-0   1/1     Running   0          4m
+kafka-controller-1   1/1     Running   0          4m
+kafka-controller-2   1/1     Running   0          4m
+```
+
+```sh
+kubectl get svc -n kafka
+```
+sample output:
+```sh
+NAME                        TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)                      AGE
+kafka                       ClusterIP   10.108.84.2   <none>        9092/TCP                     6m13s
+kafka-controller-headless   ClusterIP   None          <none>        9094/TCP,9092/TCP,9093/TCP   6m13s
+```
+
+### 3. Test Kafka Cluster
 
 ---
 

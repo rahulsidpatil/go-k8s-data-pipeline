@@ -1,0 +1,32 @@
+kraft:
+  enabled: true
+  clusterId: "abcdefghijklmnopqrstuv"
+
+replicaCount: 3
+
+auth:
+  enabled: false  # 👈 disable SASL to avoid auth issues during testing
+
+listeners:
+  client:
+    protocol: PLAINTEXT
+  controller:
+    protocol: PLAINTEXT
+  interbroker:
+    protocol: PLAINTEXT
+
+controller:
+  replicaCount: 3
+  terminationGracePeriodSeconds: 30
+
+zookeeper:
+  enabled: false
+
+externalAccess:
+  enabled: false
+
+metrics:
+  kafka:
+    enabled: true
+
+resourcesPreset: "none"  # Let the user decide resources manually

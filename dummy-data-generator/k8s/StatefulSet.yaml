@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dummy-producer
+  namespace: kafka
+spec:
+  serviceName: "dummy-producer"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dummy-producer
+  template:
+    metadata:
+      labels:
+        app: dummy-producer
+    spec:
+      containers:
+        - name: dummy-producer
+          image: dummy-producer:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BROKER
+              value: "kafka:9092"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+
+        - name: kafka-cli
+          image: bitnami/kafka:3.6.0
+          command: [ "sleep", "3600" ]
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"
