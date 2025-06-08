@@ -11,7 +11,7 @@ We’ll walk through the **fundamentals of data pipelines**, the **role of Go, K
 
 ---
 
-## Step 1: Understanding Data Pipelines
+## Understanding Data Pipelines
 
 A **data pipeline** is a set of processes that ingest, process, transform, and store data efficiently. Common components include:
 
@@ -24,379 +24,161 @@ Modern data pipelines should be **scalable, resilient, and fault-tolerant**—wh
 
 ---
 
-## Step 2: Setting Up the Local Kubernetes Cluster (Minikube)
+## building go-k8s-data-pipeline
 
-For this demo, we'll use **Minikube**, a local Kubernetes cluster.
+A step-by-step guide to build and run a high-performance data pipeline using **Go**, **Kafka (KRaft Mode)**, **MongoDB**, and **Kubernetes** via **Minikube**.
 
-### 1. Install Minikube
-> Check out minikube installation guides for all platforms at: [minikube installation guides](https://minikube.sigs.k8s.io/docs/start/?arch=%2Fwindows%2Fx86-64%2Fstable%2F.exe+download)
+---
 
-```sh
-# Install Minikube (WSL Ubuntu 22.04)
-curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-sudo install minikube-linux-amd64 /usr/local/bin/minikube
-```
-Verify installation:
+## 🧱 Components Overview
 
-```sh
-minikube version
-```
-sample output
-```sh
-minikube version: v1.36.0
-```
+| Component        | Description |
+|------------------|-------------|
+| `dummy-producer` | Continuously produces dummy data to Kafka topic. |
+| `etl-consumer` | ETL app written in Go that consumes from Kafka and writes to MongoDB. |
+| `kafka-cluster`  | Kafka setup (in KRaft mode) using Helm in Kubernetes. |
+| `mongodb`        | MongoDB deployed in Kubernetes. |
+| `Makefile`       | Automates the full setup, verification, and teardown processes. |
 
-### 2. Start Minikube Cluster
+---
 
-```sh
-minikube start --cpus=4 --memory=8192 --kubernetes-version=v1.33.1
-```
+## ⚙️ Prerequisites
 
-sample output
-```sh
-😄  minikube v1.36.0 on Ubuntu 22.04 (amd64)
-✨  Using the docker driver based on existing profile
-👍  Starting "minikube" primary control-plane node in "minikube" cluster
-🚜  Pulling base image v0.0.47 ...
-🔄  Restarting existing docker container for "minikube" ...
-🐳  Preparing Kubernetes v1.33.1 on Docker 28.1.1 ...
-🔎  Verifying Kubernetes components...
-    ▪ Using image gcr.io/k8s-minikube/storage-provisioner:v5
-🌟  Enabled addons: storage-provisioner, default-storageclass
-🏄  Done! kubectl is now configured to use "minikube" cluster and "default" namespace by default
-```
+Make sure the following are installed:
 
+- WSL2 Ubuntu 22.04 or native Linux
+- Docker
+- [Go](https://go.dev/dl/)
+- [Minikube](https://minikube.sigs.k8s.io/docs/)
+- [Kubectl](https://kubernetes.io/docs/tasks/tools/)
+- `make` command
 
-Verify installation:
+---
 
-```sh
-kubectl get nodes
-```
+## 🚀 Step-by-Step Setup Using Makefile
 
-sample output:
-```sh
+All steps below can be executed using:
 
-NAME       STATUS   ROLES           AGE     VERSION
-minikube   Ready    control-plane   9m42s   v1.33.1
+```bash
+make <target-name>
 ```
 
 ---
 
-## Step 3: Building a Dummy Data Generator
+### ✅ Step 1: Install Required Tools
 
-We need an application to **continuously push large amounts of dummy data to a Kafka topic**.
+```bash
+make install-go          # Installs Go
+make verify-go           # Verifies Go installation
 
-### 1. Create a Go-based Kafka Producer
-
-```go
-package main
-
-import (
-    "fmt"
-    "log"
-    "time"
-    "github.com/confluentinc/confluent-kafka-go/kafka"
-)
-
-func main() {
-    p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "kafka.default.svc.cluster.local:9092"})
-    if err != nil {
-        log.Fatalf("Failed to create producer: %s", err)
-    }
-    defer p.Close()
-
-    topic := "dummy-data"
-    for {
-        message := fmt.Sprintf("{\"timestamp\": \"%s\", \"value\": %d}", time.Now().Format(time.RFC3339), time.Now().UnixNano())
-        err := p.Produce(&kafka.Message{TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny}, Value: []byte(message)}, nil)
-        if err != nil {
-            log.Printf("Failed to produce message: %s", err)
-        }
-        time.Sleep(100 * time.Millisecond) // Adjust load rate
-    }
-}
-```
-
-Build and deploy this **Kafka producer** in a Kubernetes **Deployment**.
-
----
-
-## Step 4: Deploying a Kafka Cluster in KRaft Mode on Kubernetes
-
-### Create a Namespace for Kafka
-```sh
-kubectl create namespace kafka
-```
-sample output
-```sh
-namespace/kafka created
-```
-
-We’ll use **Bitnami’s Kafka Helm chart** to deploy a Zookeeper-free Kafka cluster using **KRaft mode**.
-
-### 1. Add Bitnami Helm Repository
-
-```sh
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
-```
-
-### 2. Install Kafka in KRaft Mode
-- We shall install Bitnami Kafka Helm Chart with KRaft Mode (Bitnami supports Kafka KRaft mode via Helm).
-
-```sh
- helm repo add bitnami https://charts.bitnami.com/bitnami
-```
-
-sample output:
-```sh
-WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/rahulspa/.kube/config
-WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/rahulspa/.kube/config
-"bitnami" has been added to your repositories
-```
-
-```sh
-helm repo update
-```
-sample output:
-```sh
-WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/rahulspa/.kube/config
-WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/rahulspa/.kube/config
-Hang tight while we grab the latest from your chart repositories...
-...Successfully got an update from the "bitnami" chart repository
-Update Complete. ⎈Happy Helming!⎈
-```
-- Create a `k8s/kraft-values.yaml` file for KRaft mode
-
-```yaml
-
-# kraft-values.yaml
-controller:
-  replicaCount: 3
-
-kafka:
-  kraft:
-    enabled: true
-    clusterId: "my-cluster-id"  # Must be fixed across upgrades
-  replicas: 3
-  listeners:
-    client:
-      protocol: PLAINTEXT
-  configurationOverrides:
-    "log.retention.hours": 168
-    "log.segment.bytes": 1073741824
-    "log.retention.check.interval.ms": 300000
-
-```
-- Install kafka cluster
-
-```sh
-helm install kafka bitnami/kafka -n kafka -f k8s/kraft-values.yaml
-```
-sample output:
-```sh
-
-WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/rahulspa/.kube/config
-WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/rahulspa/.kube/config
-NAME: kafka
-LAST DEPLOYED: Wed Jun  4 12:22:58 2025
-NAMESPACE: kafka
-STATUS: deployed
-REVISION: 1
-TEST SUITE: None
-NOTES:
-CHART NAME: kafka
-CHART VERSION: 32.2.12
-APP VERSION: 4.0.0
-
-Did you know there are enterprise versions of the Bitnami catalog? For enhanced secure software supply chain features, unlimited pulls from Docker, LTS support, or application customization, see Bitnami Premium or Tanzu Application Catalog. See https://www.arrow.com/globalecs/na/vendors/bitnami for more information.
-
-** Please be patient while the chart is being deployed **
-
-Kafka can be accessed by consumers via port 9092 on the following DNS name from within your cluster:
-
-    kafka.kafka.svc.cluster.local
-
-Each Kafka broker can be accessed by producers via port 9092 on the following DNS name(s) from within your cluster:
-
-    kafka-controller-0.kafka-controller-headless.kafka.svc.cluster.local:9092
-    kafka-controller-1.kafka-controller-headless.kafka.svc.cluster.local:9092
-    kafka-controller-2.kafka-controller-headless.kafka.svc.cluster.local:9092
-
-The CLIENT listener for Kafka client connections from within your cluster have been configured with the following security settings:
-    - SASL authentication
-
-To connect a client to your Kafka, you need to create the 'client.properties' configuration files with the content below:
-
-security.protocol=SASL_PLAINTEXT
-sasl.mechanism=SCRAM-SHA-256
-sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
-    username="user1" \
-    password="$(kubectl get secret kafka-user-passwords --namespace kafka -o jsonpath='{.data.client-passwords}' | base64 -d | cut -d , -f 1)";
-
-To create a pod that you can use as a Kafka client run the following commands:
-
-    kubectl run kafka-client --restart='Never' --image docker.io/bitnami/kafka:4.0.0-debian-12-r7 --namespace kafka --command -- sleep infinity
-    kubectl cp --namespace kafka /path/to/client.properties kafka-client:/tmp/client.properties
-    kubectl exec --tty -i kafka-client --namespace kafka -- bash
-
-    PRODUCER:
-        kafka-console-producer.sh \
-            --producer.config /tmp/client.properties \
-            --bootstrap-server kafka.kafka.svc.cluster.local:9092 \
-            --topic test
-
-    CONSUMER:
-        kafka-console-consumer.sh \
-            --consumer.config /tmp/client.properties \
-            --bootstrap-server kafka.kafka.svc.cluster.local:9092 \
-            --topic test \
-            --from-beginning
-
-WARNING: There are "resources" sections in the chart not set. Using "resourcesPreset" is not recommended for production. For production installations, please set the following values according to your workload needs:
-  - controller.resources
-  - defaultInitContainers.prepareConfig.resources
-+info https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
-```
-This will deploy:
-- 3 Kafka brokers with KRaft controller enabled
-- No need for Zookeeper
-
-- Verify Pods and Services
-```sh
-kubectl get pods -n kafka
-```
-sample output:
-```sh
-NAME                 READY   STATUS    RESTARTS   AGE
-kafka-controller-0   1/1     Running   0          4m
-kafka-controller-1   1/1     Running   0          4m
-kafka-controller-2   1/1     Running   0          4m
-```
-
-```sh
-kubectl get svc -n kafka
-```
-sample output:
-```sh
-NAME                        TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)                      AGE
-kafka                       ClusterIP   10.108.84.2   <none>        9092/TCP                     6m13s
-kafka-controller-headless   ClusterIP   None          <none>        9094/TCP,9092/TCP,9093/TCP   6m13s
-```
-
-### 3. Test Kafka Cluster
-
----
-
-## Step 5: Building an ETL Application in Golang
-
-The **ETL (Extract, Transform, Load) Application** will:
-
-* Extract data from Kafka.
-* Transform data into an upsert format.
-* Load data into MongoDB.
-
-### 1. Go-based Kafka Consumer & MongoDB Upserter
-
-```go
-package main
-
-import (
-    "context"
-    "log"
-    "time"
-    "github.com/confluentinc/confluent-kafka-go/kafka"
-    "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/mongo"
-    "go.mongodb.org/mongo-driver/mongo/options"
-)
-
-func main() {
-    consumer, _ := kafka.NewConsumer(&kafka.ConfigMap{"bootstrap.servers": "kafka.default.svc.cluster.local:9092", "group.id": "etl-group", "auto.offset.reset": "earliest"})
-    consumer.Subscribe("dummy-data", nil)
-
-    client, _ := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://mongo-service:27017"))
-    collection := client.Database("etl_db").Collection("data")
-
-    for {
-        msg, err := consumer.ReadMessage(-1)
-        if err == nil {
-            data := bson.M{"timestamp": time.Now(), "value": string(msg.Value)}
-            _, err := collection.InsertOne(context.TODO(), data)
-            if err != nil {
-                log.Println("Insert error:", err)
-            }
-        }
-    }
-}
+make install-minikube    # Installs Minikube
+make verify-minikube     # Verifies Minikube installation
 ```
 
 ---
 
-## Step 6: Deploying MongoDB on Kubernetes
+### 🚀 Step 2: Start Minikube Cluster
 
-Create `mongodb.yaml` manifest:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mongodb
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: mongodb
-  template:
-    metadata:
-      labels:
-        app: mongodb
-    spec:
-      containers:
-      - name: mongodb
-        image: mongo
-        ports:
-        - containerPort: 27017
+```bash
+make minikube-start      # Starts Minikube with 4 CPUs and 8192MB memory
 ```
 
-Deploy MongoDB:
+Optional:
 
-```sh
-kubectl apply -f mongodb.yaml
+```bash
+make minikube-verify # verify minikube version and status
+make k8s-check #verify minikube k8s cluster deployment
+make minikube-dashboard  # Launch Minikube dashboard
+
 ```
 
 ---
 
-## Step 7: Autoscaling the ETL Application
+### 📦 Step 3: Deploy Kafka in KRaft Mode
 
-We will configure **Horizontal Pod Autoscaler (HPA)** to scale our ETL application based on Kafka load.
-
-### Apply HPA Policy
-
-```sh
-kubectl autoscale deployment etl-app --cpu-percent=50 --min=1 --max=10
+```bash
+make kafka-install       # Installs Kafka using Bitnami Helm with KRaft mode
+make kafka-verify        # Verifies Kafka setup
 ```
 
 ---
 
-## Step 8: Benchmarking Performance
+### 🍃 Step 4: Deploy MongoDB
 
-Use **k6** to simulate load:
-
-```sh
-k6 run load-test.js
+```bash
+make mongo-install       # Deploys MongoDB on Kubernetes
+make mongo-verify        # Verifies MongoDB deployment
 ```
-
-Monitor Kafka consumer lag and MongoDB performance using **Prometheus & Grafana**.
 
 ---
 
-## Conclusion
+### 💾 Step 5: Deploy Dummy Data Producer
 
-- ✅ **Fully automated Kafka-based data pipeline** in Go & Kubernetes (Zookeeper-free).
-- ✅ **Auto-scaled ETL logic** ensures efficient performance.
-- ✅ **Step-by-step deployment & benchmarking** for real-world readiness.
+```bash
+make dummy-data-generator-install  # Deploys Go-based dummy Kafka producer
+make dummy-data-generator-verify        # Verifies dummy producer pod
+```
 
-💡 **Next Steps**: Build advanced analytics, use cloud-native services, or optimize for large-scale production!
+---
 
-📌 **Full GitHub repository** coming soon!
+### ⚙️ Step 6: Deploy ETL Go Application
+
+```bash
+make etl-consumer-install   # Deploys the ETL service that reads from Kafka and writes to MongoDB
+make etl-consumer-verify          # Verifies ETL service
+```
+
+
+---
+
+## 📊 Optional: Setup HPA for ETL App
+
+```bash
+kubectl autoscale deployment etl-consumer --cpu-percent=50 --min=1 --max=10
+```
+
+---
+
+## 🧪 Optional: Benchmarking
+
+You may simulate load on Kafka by adjusting the dummy producer frequency or using tools like `k6`.
+
+---
+
+## 🧹 Teardown / Cleanup
+
+```bash
+make stop-minikube       # Stops the Minikube cluster
+make delete-minikube     # Deletes the Minikube cluster
+make delete-kafka        # Uninstalls Kafka
+make delete-mongo        # Deletes MongoDB
+make delete-dummy        # Deletes dummy producer
+make delete-etl          # Deletes ETL app
+make clean               # Deletes all above
+```
+
+---
+
+## 🧠 Architecture Diagram
+
+```
++-------------------+        +-----------+        +-----------+        +---------+
+| Dummy Producer    |----->  |  Kafka    |----->  |  ETL Go   |----->  | MongoDB |
++-------------------+        +-----------+        +-----------+        +---------+
+```
+
+---
+
+## 📎 Resources
+
+- [Go](https://go.dev/)
+- [Kafka KRaft Mode](https://kafka.apache.org/documentation/#kraft)
+- [Minikube](https://minikube.sigs.k8s.io/docs/)
+- [Bitnami Kafka Helm Chart](https://bitnami.com/stack/kafka/helm)
+
+---
+
+## 📝 License
+
+MIT License
+
