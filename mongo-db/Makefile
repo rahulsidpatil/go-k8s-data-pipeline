@@ -10,7 +10,7 @@ uninstall:
 test:
 	@echo "🔍 Verifying MongoDB Pod..."
 	kubectl get pods -n kafka | grep mongodb || true
-	kubectl wait --for=condition=Ready pod/mongodb-0 -n $(NAMESPACE) --timeout=120s
+	kubectl wait --for=condition=Ready pod/mongodb-0 -n $(NAMESPACE) --timeout=180s
 	sleep 5 # Wait for MongoDB to be ready
 	@echo "\n🔍 Checking MongoDB connection..."
 	kubectl exec -n kafka mongodb-0 -- mongosh --eval "db.runCommand({ connectionStatus: 1 })"
