@@ -1,6 +1,6 @@
 .PHONY: all help install-go verify-go install-minikube verify-minikube start-minikube \
-        kafka mongo dummy etl delete-kafka delete-mongo delete-dummy delete-etl clean \
-        stop-minikube delete-minikube
+	kafka mongo dummy etl delete-kafka delete-mongo delete-dummy delete-etl clean \
+	stop-minikube delete-minikube
 
 all: help
 
@@ -49,54 +49,51 @@ minikube-verify:
 minikube-dashboard:
 	@echo "📦 Enabling Minikube dashboard..."
 	minikube addons enable dashboard
-	@echo "🌐 Access the dashboard at the following URL:"
-	minikube dashboard --url
+	@echo "🌐 Launching the dashboard in background..."
+	@nohup minikube dashboard --url > /tmp/minikube-dashboard-url.txt 2>&1 &
+	@sleep 3
+	@echo "🌐 Dashboard URL:"
+	@grep -o 'http://[^ ]*' /tmp/minikube-dashboard-url.txt || echo "↪️  Waiting for dashboard URL to become available..."
 
-minikube-start:
-	 minikube start --cpus=4 --memory=8192 --kubernetes-version=v1.33.1 --driver=docker
-	 minikube-verify
-	 minikube dashboard
-	 k8s-check
+minikube-dashboard-disable:
+	@echo "🛑 Disabling Minikube dashboard..."
+	minikube addons disable dashboard
+	@rm -f /tmp/minikube-dashboard-url.txt
+	@echo "🧹 Removed dashboard URL file if it existed."
+
+
+minikube-start:	
+	minikube start --cpus=4 --memory=8192 --kubernetes-version=v1.33.1 --driver=docker
+
 	 
 k8s-check:
 	kubectl cluster-info && \
 	kubectl get namespaces && \
 	kubectl get services --all-namespaces && \
-	# Check if the default namespace is available
 	kubectl get namespace default && \
-	# Check if the kube-system namespace is available
 	kubectl get namespace kube-system && \
-	# Check if the kube-public namespace is available
 	kubectl get namespace kube-public && \
-	# Check if the kube-node-lease namespace is available
 	kubectl get namespace kube-node-lease && \
-	# Check if the kube-scheduler namespace is available
-	kubectl get namespace kube-scheduler && \
-	# Check if the kube-controller-manager namespace is available
-	kubectl get namespace kube-controller-manager && \
-	# Check if the kube-proxy namespace is available
-	kubectl get namespace kube-proxy && \
-	# Check if the kube-dns namespace is available
-	kubectl get namespace kube-dns && \
-	# Check if the kube-storage namespace is available
-	kubectl get namespace kube-storage && \
 	kubectl get nodes	
 
-stop-minikube:
+minikube-stop:
 	minikube stop
 
 minikube-delete:
 	minikube delete
 
 minikube-clean:
+	minikube dashboard-disable && \
 	minikube stop && \
 	minikube delete
 
 kafka-install:
 	$(MAKE) -C kafka-cluster install-kafka-cluster && \
-	$(MAKE) -C kafka-cluster expose 
+	$(MAKE) -C kafka-cluster expose	&& \
+	$(MAKE) -C kafka-cluster test
 
 kafka-verify:
+	$(MAKE) -C kafka-cluster deploy-kafka-test-client && \
 	$(MAKE) -C kafka-cluster test
 
 kafka-uninstall:
@@ -105,7 +102,8 @@ kafka-uninstall:
 
 mongo-install:
 	$(MAKE) -C mongo-db install	&& \
-	$(MAKE) -C mongo-db test
+	$(MAKE) -C mongo-db test	&& \
+	$(MAKE) -C mongo-db init-db
 
 mongo-verify:
 	$(MAKE) -C mongo-db test
@@ -135,7 +133,13 @@ etl-consumer-verify:
 etl-consumer-uninstall:
 	$(MAKE) -C etl-consumer etl-uninstall
 
+etl-show-mongo-messages:
+	$(MAKE) -C etl-consumer etl-show-messages
+
 deploy-pipeline: minikube-start \
+		minikube-verify \
+		k8s-check \
+		minikube-dashboard \
 		kafka-install \
 		mongo-install \
 		dummy-data-generator-install \
@@ -145,4 +149,5 @@ clean: etl-consumer-uninstall \
 	   dummy-data-generator-uninstall \
 	   mongo-uninstall \
 	   kafka-uninstall	\
-	   minikube clean
+	   minikube-dashboard-disable \
+	   minikube-stop

@@ -57,9 +57,8 @@ test:
 
 	@echo "\n🧼 Cleaning up any existing test pod..."
 	kubectl delete pod kafka-test-client -n $(NAMESPACE) --ignore-not-found
-
+	
 	@echo "\n🚀 Deploying test client pod..."
-	kubectl delete pod kafka-test-client -n kafka --ignore-not-found
 	kubectl run kafka-test-client \
 		--restart='Never' \
 		--image=kafka-test-client:latest \
