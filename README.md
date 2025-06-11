@@ -88,6 +88,7 @@ Optional:
 ```bash
 make minikube-verify # verify minikube version and status
 make k8s-check #verify minikube k8s cluster deployment
+make minikube-enable-metrics-server #enable minikube metrics server
 make minikube-dashboard  # Launch Minikube dashboard
 
 ```

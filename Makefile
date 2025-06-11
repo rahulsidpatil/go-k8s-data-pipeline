@@ -61,6 +61,15 @@ minikube-dashboard-disable:
 	@rm -f /tmp/minikube-dashboard-url.txt
 	@echo "🧹 Removed dashboard URL file if it existed."
 
+minikube-enable-metrics-server:
+	minikube addons enable metrics-server && \
+	kubectl get deployment metrics-server -n kube-system && \
+	kubectl get service metrics-server -n kube-system
+
+minikube-disable-metrics-server:
+	minikube addons disable metrics-server && \
+	kubectl delete deployment metrics-server -n kube-system && \
+	kubectl delete service metrics-server -n kube-system
 
 minikube-start:	
 	minikube start --cpus=4 --memory=8192 --kubernetes-version=v1.33.1 --driver=docker

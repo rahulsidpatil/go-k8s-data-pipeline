@@ -21,6 +21,8 @@ spec:
           env:
             - name: KAFKA_BROKER
               value: "kafka:9092"
+            - name: SLEEP_INTERVAL_MS
+              value: "5000"
           resources:
             requests:
               memory: "512Mi"

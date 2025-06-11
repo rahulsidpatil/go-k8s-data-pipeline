@@ -1,0 +1,19 @@
+🟢 Starting benchmark at Wed Jun 11 13:00:00 IST 2025
+Producer Pod: dummy-producer-abcdef
+Consumer Pod: etl-consumer-xyz123
+Initial messages produced: 0
+Initial messages consumed: 0
+
+Collecting CPU and Memory usage every 5s for 60s...
+--- Wed Jun 11 13:00:05 IST 2025 ---
+NAME                    CPU(cores)   MEMORY(bytes)
+dummy-producer-abcdef   120m         70Mi
+etl-consumer-xyz123     160m         95Mi
+mongodb-0               110m         130Mi
+...
+
+📊 Benchmark Summary:
+Messages sent to Kafka: 1000
+Messages inserted into MongoDB: 1000
+Duration: 60s
+Logs saved to benchmark-results.txt

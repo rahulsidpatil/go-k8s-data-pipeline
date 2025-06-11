@@ -30,6 +30,9 @@ RUN install_packages \
 
 COPY --from=builder /app/dummy-producer /opt/dummy-producer
 
+# Set default environment variable
+ENV SLEEP_INTERVAL_MS=5000
+
 USER 1001
 
 ENTRYPOINT ["/opt/dummy-producer"]

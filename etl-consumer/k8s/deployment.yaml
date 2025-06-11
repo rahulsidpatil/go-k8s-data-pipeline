@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: etl-consumer
+  namespace: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: etl-consumer
+  template:
+    metadata:
+      labels:
+        app: etl-consumer
+    spec:
+      containers:
+      - name: etl-consumer
+        image: etl-consumer:latest
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            cpu: 100m
+            memory: 50Mi
+          limits:
+            cpu: 300m
+            memory: 80Mi
+      - name: kafka-cli
+        image: docker.io/bitnami/kafka:3.6.1
+        command:
+        - sleep
+        args:
+        - infinity
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+      - name: mongo-cli
+        image: mongo:7.0
+        command:
+        - sleep
+        args:
+        - infinity
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+  strategy:
+    type: RollingUpdate
